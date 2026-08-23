@@ -42,7 +42,7 @@ class SerialTransport : Closeable {
         close()
         val candidate = SerialPort.getCommPort(choice.systemName)
         candidate.setComPortParameters(115200, 8, SerialPort.ONE_STOP_BIT, SerialPort.NO_PARITY)
-        candidate.flowControlSettings = SerialPort.FLOW_CONTROL_DISABLED
+        candidate.setFlowControl(SerialPort.FLOW_CONTROL_DISABLED)
         candidate.setComPortTimeouts(SerialPort.TIMEOUT_NONBLOCKING, 0, 0)
         if (!candidate.openPort(4_000)) {
             candidate.closePort()
@@ -58,7 +58,8 @@ class SerialTransport : Closeable {
         var offset = 0
         while (offset < data.size) {
             checkNotInterrupted()
-            val written = active.writeBytes(data, (data.size - offset).toLong(), offset.toLong())
+            val remaining = data.copyOfRange(offset, data.size)
+            val written = active.writeBytes(remaining, remaining.size.toLong())
             if (written < 0) throw IOException("Serial write failed")
             if (written == 0) {
                 Thread.sleep(5)
@@ -76,7 +77,7 @@ class SerialTransport : Closeable {
             if (!active.isOpen) throw IOException("Serial connection closed")
             if (active.bytesAvailable() > 0) {
                 val one = ByteArray(1)
-                if (active.readBytes(one, 1) == 1L) return one[0].toInt() and 0xFF
+                if (active.readBytes(one, 1) == 1) return one[0].toInt() and 0xFF
             }
             Thread.sleep(5)
         }
