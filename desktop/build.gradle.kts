@@ -6,10 +6,6 @@ plugins {
 group = "com.example.hammerdroid"
 version = "1.0.0"
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
     implementation(kotlin("stdlib"))
     implementation("com.fazecast:jSerialComm:2.11.0")
