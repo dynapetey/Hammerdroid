@@ -1,0 +1,113 @@
+name: Build Linux Runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - ".github/workflows/linux.yml"
+      - "LINUX.md"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - ".github/workflows/linux.yml"
+      - "LINUX.md"
+
+permissions:
+  contents: read
+
+jobs:
+  package-linux:
+    name: Package Linux x64
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Compile and install desktop distribution
+        run: gradle --no-daemon :desktop:clean :desktop:installDist
+
+      - name: Build self-contained runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="desktop/build/linux-package/hammerdroid-linux-x64"
+          mkdir -p "$package/app"
+          cp -a desktop/build/install/hammerdroid-linux/. "$package/app/"
+          jlink \
+            --add-modules java.base,java.desktop,java.logging,java.management,jdk.unsupported \
+            --strip-debug \
+            --no-header-files \
+            --no-man-pages \
+            --compress=2 \
+            --output "$package/runtime"
+
+          cat > "$package/run-hammerdroid.sh" <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          app_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          exec "$app_dir/runtime/bin/java" -cp "$app_dir/app/lib/*" com.example.hammerdroid.desktop.MainKt "$@"
+          SCRIPT
+
+          cat > "$package/install.sh" <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          install_dir="${XDG_DATA_HOME:-$HOME/.local/share}/gt-flash"
+          bin_dir="$HOME/.local/bin"
+          mkdir -p "$install_dir" "$bin_dir"
+          cp -a "$source_dir/app" "$source_dir/runtime" "$source_dir/run-hammerdroid.sh" "$install_dir/"
+          chmod +x "$install_dir/run-hammerdroid.sh"
+          ln -sfn "$install_dir/run-hammerdroid.sh" "$bin_dir/gt-flash"
+          echo "Installed GT FLASH. Run: $bin_dir/gt-flash"
+          SCRIPT
+
+          chmod +x "$package/run-hammerdroid.sh" "$package/install.sh"
+          cp LINUX.md "$package/README-LINUX.md"
+          (
+            cd desktop/build/linux-package
+            tar -czf hammerdroid-linux-x64.tar.gz hammerdroid-linux-x64
+            zip -qr hammerdroid-linux-x64.zip hammerdroid-linux-x64
+            sha256sum hammerdroid-linux-x64.tar.gz hammerdroid-linux-x64.zip > SHA256SUMS.txt
+          )
+
+      - name: Verify package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x desktop/build/linux-package/hammerdroid-linux-x64/runtime/bin/java
+          test -x desktop/build/linux-package/hammerdroid-linux-x64/run-hammerdroid.sh
+          test -f desktop/build/linux-package/hammerdroid-linux-x64/app/lib/desktop-1.0.0.jar
+          (
+            cd desktop/build/linux-package
+            sha256sum --check SHA256SUMS.txt
+          )
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hammerdroid-linux-x64-$${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            desktop/build/linux-package/hammerdroid-linux-x64.tar.gz
+            desktop/build/linux-package/hammerdroid-linux-x64.zip
+            desktop/build/linux-package/SHA256SUMS.txt
