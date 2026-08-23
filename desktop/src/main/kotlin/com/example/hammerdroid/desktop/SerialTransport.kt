@@ -59,7 +59,7 @@ class SerialTransport : Closeable {
         while (offset < data.size) {
             checkNotInterrupted()
             val remaining = data.copyOfRange(offset, data.size)
-            val written = active.writeBytes(remaining, remaining.size.toLong())
+            val written = active.writeBytes(remaining, remaining.size)
             if (written < 0) throw IOException("Serial write failed")
             if (written == 0) {
                 Thread.sleep(5)
@@ -88,7 +88,7 @@ class SerialTransport : Closeable {
         val active = port ?: return
         val available = active.bytesAvailable()
         if (available > 0) {
-            active.readBytes(ByteArray(available), available.toLong())
+            active.readBytes(ByteArray(available), available)
         }
     }
 
