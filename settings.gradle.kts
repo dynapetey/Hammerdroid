@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Hammerdroid"
-include(":app")
+include(":app", ":desktop")
